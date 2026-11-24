@@ -1,0 +1,53 @@
+// ARKA PLAN FOTOĞRAFLARI (1080x1920 dikey, ekranı tamamen kaplar). Spora basınca YALNIZCA o sporun listesinden rastgele biri seçilir.
+// Ana sayfada (spor seçilmeden) tüm listelerden karışık gelir. Adres açılmazsa sıradaki denenir, hepsi bozuksa çizilen sahne gösterilir.
+// Yeni fotoğraf eklemek için ilgili sporun listesine adres ekle. Fotoğrafı yanlış spora denk gelirse adresini diğer listeye taşı.
+export const PHOTOS = {
+  camping: [
+    'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1523987355523-c7b5b0dd90a7?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1478131143081-80f7f84ca84d?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1537905569824-f89f14cceb68?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1496545672447-f699b503d270?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1517824806704-9040b037703b?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1533873984035-25970ab07461?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1464547323744-4edd0cd0c746?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1510312305653-8ed496efae75?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1487730116645-74489c95b41b?w=1080&h=1920&fit=crop&q=80',
+  ],
+  paragliding: [
+    'https://images.unsplash.com/photo-1516541196182-6bdb0516ed27?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1503220317375-aaad61436b1b?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1504608524841-42fe6f032b4b?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1536514498073-50e69d39c6cf?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1499346030926-9a72daac6c63?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1517483000871-1dbf64a6e1c6?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1501630834273-4b5604d2ee31?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1527482797697-8795b05a13fe?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1534088568595-a066f410bcda?w=1080&h=1920&fit=crop&q=80',
+  ],
+  'rock-climbing': [
+    'https://images.unsplash.com/photo-1522163182402-834f871fd851?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1516592673884-4a382d1124c2?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1564769662533-4f00a87b4056?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1522163723043-478ef79a5bb4?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1458442310124-dde6edb43d10?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1474044159687-1ee9f3a51722?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1473580044384-7ba9967e16a0?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1542401886-65d6c61db217?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1080&h=1920&fit=crop&q=80',
+  ],
+  'ultra-trail': [
+    'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1502904550040-7534597429ae?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1530143311094-34d807799e8f?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1486218119243-13883505764c?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1551632811-561732d1e306?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1513593771513-7b58b6c4af38?w=1080&h=1920&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1594882645126-14020914d58d?w=1080&h=1920&fit=crop&q=80',
+  ],
+};

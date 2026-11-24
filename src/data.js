@@ -1,67 +1,35 @@
-// Spor, ekipman ve hava senaryosu verileri (ekip buraya yeni spor/ekipman ekleyebilir)
-export const LEVELS = ['Acemi', 'Orta', 'Prof'];
-
-const g = (id, name, spec, w, must = true) => ({ id, name, spec, w, must });
-
+// Spor ve ekipman verileri (adlar geargrid_expo_app_1.js dosyasından, gramajlar tahminidir). Yeni spor için bir blok eklemek yeterli.
 export const SPORTS = [
-  {
-    id: 'camping', name: 'Doğa Kampı & Bushcraft', icon: '⛺', category: 'Kara', color: '#d97706',
-    bg: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=1000&auto=format&fit=crop&q=80',
-    limits: { Acemi: 14000, Orta: 10500, Prof: 6800 },
+  { id: 'camping', name: 'Doğa Kampı & Bushcraft (Campers)', icon: '⛺', category: 'Kara', themeColor: '#d97706', limit: 10500, hard: 16000, note: "Kamp çantası vücut ağırlığının yaklaşık %20-25'ini geçmemeli. 16 kg üstü diz ve beli yorar.",
     base: [
-      g('c1', '3 Mevsim Çadır', 'Çift tenteli, 3000mm su sütunu', 2200),
-      g('c2', 'Uyku Tulumu (0°C konfor)', 'Sıkıştırılabilir dolgu', 1100),
-      g('c3', 'Şişme Kamp Matı', 'R-değeri 3+ zemin izolasyonu', 550),
-      g('c4', 'Kafa Lambası + Yedek Pil', '200 lümen, kırmızı gece modu', 110),
-      g('c5', 'Kamp Ocağı & Kartuş', 'Rüzgar korumalı brülör', 480),
-      g('c6', 'İlk Yardım Kiti', 'Gazlı bez, sargı, antiseptik', 350),
-      g('c7', 'Su Filtresi', '0.1 mikron', 95, false),
-    ],
-  },
-  {
-    id: 'ultra-trail', name: 'Ultra Trail & Dağ Koşusu', icon: '🏃‍♂️', category: 'Kara', color: '#10b981',
-    bg: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1000&auto=format&fit=crop&q=80',
-    limits: { Acemi: 6000, Orta: 5000, Prof: 3500 },
+      { id: 'c1', name: '3 Mevsim Çadır', spec: 'Çift tenteli, 3000mm su sütunu', w: 2200, must: true },
+      { id: 'c2', name: 'Uyku Tulumu (0°C konfor)', spec: 'Sıkıştırılabilir dolgu', w: 1100, must: true },
+      { id: 'c3', name: 'Şişme Kamp Matı', spec: 'R-değeri 3+ zemin izolasyonu', w: 550, must: true },
+      { id: 'c4', name: 'Kafa Lambası + Yedek Pil', spec: '200 lümen, kırmızı gece modu', w: 110, must: true },
+      { id: 'c5', name: 'Kamp Ocağı & Kartuş', spec: 'Rüzgar korumalı brülör', w: 480, must: true },
+      { id: 'c6', name: 'İlk Yardım Kiti', spec: 'Gazlı bez, sargı, antiseptik', w: 350, must: true }],
+    meds: [{ id: 'cm1', name: 'Böcek / Kene Kovucu Sprey', spec: 'Ormanlık ve çalılık alan koruması', w: 120, must: true },
+      { id: 'cm2', name: 'Antihistaminik Tablet', spec: 'Böcek ısırığı ve polen', w: 30, must: true }] },
+  { id: 'ultra-trail', name: 'Ultra Trail & Dağ Koşusu', icon: '🏃‍♂️', category: 'Kara', themeColor: '#10b981', limit: 5000, hard: 7000, note: "Ultra trailde koşu çantası genelde 2-5 kg olur. Daha ağır çantayla koşulmaz, sadece zorunlu ekipmanı al.",
     base: [
-      g('u1', 'Hidrasyon Yeleği (1.5L)', 'Esnek matara', 400),
-      g('u2', 'Termal Acil Battaniye', 'Alüminyum yansıtıcı', 50),
-      g('u3', 'Kafa Lambası (300 lümen)', 'IPX6 su geçirmez', 120),
-      g('u4', 'Düdük & Görünür Yelek', 'Reflektörlü', 120),
-      g('u5', 'İlk Yardım Seti', 'Temel set', 150),
-      g('u6', 'Elektrolit Tabletleri', 'Kramp önleyici', 40, false),
-    ],
-  },
-  {
-    id: 'paragliding', name: 'Yamaç Paraşütü', icon: '🪂', category: 'Hava', color: '#0284c7',
-    bg: 'https://images.unsplash.com/photo-1516541196182-6bdb0516ed27?w=1000&auto=format&fit=crop&q=80',
-    limits: { Acemi: 9000, Orta: 8000, Prof: 7000 },
+      { id: 'ut-1', name: 'Arazi Koşu Ayakkabısı (Vibram Taban)', spec: 'Kaygan zemin tutuşu ve su tahliyeli yapı', w: 600, must: true },
+      { id: 'ut-2', name: 'Hidrasyon Yeleği (1.5L Sıvı Kapasitesi)', spec: 'Çift soft flask ve düdük entegre', w: 400, must: true },
+      { id: 'ut-3', name: 'Termal Acil Durum Battaniyesi', spec: '200x150cm yüksek ısı yansıtıcı', w: 60, must: true },
+      { id: 'ut-4', name: 'Kafa Lambası (500 Lümen)', spec: 'IPX6 su geçirmez ve yedek bataryalı', w: 120, must: true }],
+    meds: [{ id: 'ut-med-1', name: 'Elektrolit & Sodyum Tabletleri', spec: 'Uzun etaplarda sıvı kaybı ve kramp önleyici', w: 40, must: true },
+      { id: 'ut-med-2', name: 'Pişik ve Sürtünme Önleyici Krem', spec: 'Uzun mesafe cilt tahriş koruması', w: 60, must: true }] },
+  { id: 'paragliding', name: 'Yamaç Paraşütü (Paragliding)', icon: '🪂', category: 'Hava', themeColor: '#0284c7', limit: 11000, hard: 15000, note: "Kanat ve harness ile toplam yük genelde 10-14 kg olur. Daha ağırsa yürüyüşle kalkış zorlaşır.",
     base: [
-      g('p1', 'Paraşüt (Kanat)', 'Sertifikalı, kontrol edilmiş', 4200),
-      g('p2', 'Harness + Yedek Paraşüt', 'Koruma köpüklü', 3000),
-      g('p3', 'Kask', 'Sertifikalı', 450),
-      g('p4', 'Vario & GPS', 'İrtifa takibi', 200),
-      g('p5', 'Telsiz', 'Yer ekibiyle iletişim', 180, false),
-    ],
-  },
-  {
-    id: 'rock-climbing', name: 'Kaya Tırmanışı / Bouldering', icon: '🧗‍♂️', category: 'Kara', color: '#ef4444',
-    bg: 'https://images.unsplash.com/photo-1522163182402-834f871fd851?w=1000&auto=format&fit=crop&q=80',
-    limits: { Acemi: 9000, Orta: 8000, Prof: 7000 },
+      { id: 'pg-1', name: 'Sertifikalı Yamaç Paraşütü Kanadı', spec: 'Kilo limitine ve uçuş karakterine uygun', w: 4200, must: true },
+      { id: 'pg-2', name: 'Sırt Korumalı Harnes (Airbag/Mousse)', spec: 'Darbe emici arka koruma ünitesi', w: 3000, must: true },
+      { id: 'pg-3', name: 'Yedek Paraşüt Sistemi', spec: 'Son 6 ay içinde katlanmış ve onaylı', w: 1500, must: true },
+      { id: 'pg-4', name: 'Sesli Variometre & Kask', spec: 'EN966 uçuş sertifikalı kask', w: 650, must: true }],
+    meds: [{ id: 'pg-med-1', name: 'Uçuş / Hareket Bulantı Önleyici', spec: 'Yoğun termik ve türbülans için denge desteği', w: 20, must: true }] },
+  { id: 'rock-climbing', name: 'Kaya Tırmanışı / Bouldering', icon: '🧗‍♂️', category: 'Kara', themeColor: '#ef4444', limit: 8000, hard: 12000, note: "Tırmanış çantası genelde 6-10 kg olur. Duvara yürüyüş için 12 kg üstü yorucudur.",
     base: [
-      g('r1', 'Tırmanış Ayakkabısı', 'Sıkı oturan, yapışkan taban', 600),
-      g('r2', 'Kask', 'Düşen taşlara karşı', 350),
-      g('r3', 'Harness', 'Ayarlanabilir', 380),
-      g('r4', 'Dinamik İp (60m)', 'Kontrol edilmiş', 3500),
-      g('r5', 'Emniyet Aleti & Kilitli Karabina', 'Grigri / ATC', 250),
-      g('r6', 'Magnezya & Torba', 'Ter kontrolü', 120, false),
-    ],
-  },
-];
-
-// Hava senaryoları (şimdilik simüle; canlı API sonra weather.js'e bağlanacak)
-export const SCENARIOS = [
-  { id: 'sunny', label: 'Açık & Ilık', icon: '☀️', temp: 14, rain: 5, wind: 10, snow: false },
-  { id: 'rainy', label: 'Yağmurlu & Rüzgarlı', icon: '🌧️', temp: 3, rain: 60, wind: 35, snow: false },
-  { id: 'snow', label: 'Kar & Soğuk', icon: '❄️', temp: -6, rain: 30, wind: 20, snow: true },
-  { id: 'hot', label: 'Sıcak Hava', icon: '🔥', temp: 31, rain: 0, wind: 12, snow: false },
+      { id: 'rc-1', name: 'CE / UIAA Onaylı Emniyet Kemeri', spec: 'Ayarlanabilir bacak ve bel kolonları', w: 380, must: true },
+      { id: 'rc-2', name: 'Dinamik Tırmanış İpi (9.5mm - 70m)', spec: 'Dry-treated su ve kir itici kaplama', w: 3500, must: true },
+      { id: 'rc-3', name: 'Tırmanış Kaskı & Emniyet Aleti', spec: 'Düşen taş koruması ve kilitli karabina', w: 600, must: true }],
+    meds: [{ id: 'rc-med-1', name: 'Parmak Tırmanış Bandı (Finger Tape)', spec: 'Tendon ve eklem zorlanmalarına karşı', w: 40, must: true },
+      { id: 'rc-med-2', name: 'Antiseptik Yara Spreyi', spec: 'Kaya sürtünme çiziklerine ilk müdahale', w: 80, must: true }] },
 ];
