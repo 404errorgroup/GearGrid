@@ -1,58 +1,59 @@
-import { norm } from './health';
-
-// Hava servisi (SİMÜLE). Konum/GPS API'si yok: yazılan yer adına göre tutarlı, günlük değişen veri üretir.
-// TODO (API): placeWeather(...) çağrıları canlı hava API'sine bağlanacak. Dönüş biçimi sabit kaldığı sürece uygulamanın geri kalanı değişmez.
-// Her nokta: temp, feels (hissedilen), rain (%), mm (yağış şiddeti), wind, gust, humidity, snow, conf (tahmin doğruluğu %).
-const CITY = { alacati: [14, 40, 30], cesme: [13, 40, 28], bodrum: [13, 40, 20], kas: [14, 40, 14], babadag: [4, 45, 26], geyikbayiri: [12, 40, 12],
-  istanbul: [9, 55, 28], bursa: [7, 50, 15], uludag: [-4, 60, 40], izmir: [11, 35, 18], ankara: [1, 30, 14], antalya: [12, 40, 12],
-  kayseri: [-1, 25, 16], erciyes: [-9, 35, 38], trabzon: [9, 70, 16], kackar: [-6, 55, 30], mugla: [8, 45, 12], fethiye: [13, 45, 14],
-  oludeniz: [13, 40, 15], denizli: [5, 30, 12], eskisehir: [2, 30, 18], konya: [1, 20, 15], erzurum: [-7, 30, 14], edirne: [6, 45, 20],
-  canakkale: [9, 40, 30], bolu: [3, 45, 12], mersin: [12, 35, 12], samsun: [8, 60, 20], sakarya: [8, 55, 14], aydin: [10, 35, 10], adana: [11, 35, 10] };
-const MOUNTAIN = ['uludag', 'erciyes', 'kackar', 'babadag']; // dağ havası daha az öngörülebilir
-
-export const CITIES = ['Babadağ', 'Ölüdeniz', 'Fethiye', 'Kaş', 'Geyikbayırı', 'Antalya', 'Bodrum', 'Çeşme', 'Alaçatı', 'İzmir', 'İstanbul', 'Bursa', 'Uludağ', 'Bolu', 'Ankara', 'Kayseri', 'Erciyes', 'Trabzon', 'Kaçkar'];
-
-const hash = (s) => { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
-const rand = (seed) => { let a = seed; return () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296; };
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
-// Hissedilen sıcaklık: soğukta rüzgar etkisi (wind chill), diğer durumlarda nem ve rüzgarlı görünür sıcaklık.
-const feelsLike = (T, rh, v) => {
-  if (T <= 10 && v >= 5) { const p = Math.pow(v, 0.16); return Math.round(13.12 + 0.6215 * T - 11.37 * p + 0.3965 * T * p); }
-  const e = (rh / 100) * 6.105 * Math.exp((17.27 * T) / (237.7 + T));
-  return Math.round(T + 0.33 * e - 0.7 * (v / 3.6) - 4);
+// Hava servisi: Open-Meteo (canlı, API anahtarı gerekmez). Birimler: °C, km/s, mm.
+// getPlaceWeather(yer) -> { points: [şu anki durum], worst: bugünün en zor koşulu }
+// "worst" ekipman kural motoruna (engine.js) gider: günün en düşük sıcaklığı, en yüksek yağış ihtimali ve rüzgarı.
+// Koordinatlar yaklaşıktır. Open-Meteo sıcaklığı noktanın rakımına göre hesaplar; Hava sekmesinde rakım yazar,
+// beklediğinden farklıysa koordinatı düzelt (özellikle Uludağ, Erciyes, Kaçkar).
+const PLACES = {
+  'Babadağ': [36.517, 29.167], 'Ölüdeniz': [36.55, 29.117], 'Fethiye': [36.622, 29.116], 'Kaş': [36.202, 29.641],
+  'Geyikbayırı': [36.878, 30.486], 'Antalya': [36.897, 30.713], 'Bodrum': [37.034, 27.431], 'Çeşme': [38.324, 26.307],
+  'Alaçatı': [38.282, 26.374], 'İzmir': [38.424, 27.143], 'İstanbul': [41.008, 28.978], 'Bursa': [40.183, 29.067],
+  'Uludağ': [40.09, 29.13], 'Bolu': [40.735, 31.606], 'Ankara': [39.933, 32.86], 'Kayseri': [38.731, 35.479],
+  'Erciyes': [38.54, 35.48], 'Trabzon': [41.003, 39.717], 'Kaçkar': [40.84, 41.16],
 };
+export const CITIES = Object.keys(PLACES);
 
-function build(temp, rain, wind, r, mountain) {
-  const humidity = clamp(Math.round(40 + rain * 0.5 + r() * 12), 20, 100);
-  return {
-    temp, rain, wind, humidity, gust: Math.round(wind * 1.35), snow: temp <= 0 && rain >= 25,
-    feels: feelsLike(temp, humidity, wind), mm: rain >= 30 ? Math.max(1, Math.round(rain / 12)) : 0,
-    conf: clamp(Math.round(92 - rain * 0.12 - wind * 0.25 - (mountain ? 8 : 0) + (r() - 0.5) * 6), 52, 97), // tahmin doğruluğu %
+const BASE = 'https://api.open-meteo.com/v1/forecast';
+const TIMEOUT_MS = 10000;
+
+export async function getPlaceWeather(place) {
+  const pos = PLACES[place];
+  if (!pos) throw new Error('Bilinmeyen konum: ' + place);
+  const url = `${BASE}?latitude=${pos[0]}&longitude=${pos[1]}`
+    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,snowfall,wind_speed_10m,wind_gusts_10m'
+    + '&hourly=precipitation_probability'
+    + '&daily=temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,snowfall_sum'
+    + '&forecast_days=1&timezone=auto';
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  let d;
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error('Open-Meteo ' + res.status);
+    d = await res.json();
+  } finally { clearTimeout(timer); }
+  if (d.error) throw new Error(d.reason || 'Open-Meteo hatası');
+
+  const c = d.current, day = d.daily;
+  // Yağış ihtimali saatlik gelir: şu anki saate denk gelen değeri al
+  const idx = Math.max(0, d.hourly.time.indexOf(c.time.slice(0, 13) + ':00'));
+  const rain = d.hourly.precipitation_probability[idx] ?? 0;
+  const temp = Math.round(c.temperature_2m);
+  const point = {
+    label: 'Şu an', place, temp, feels: Math.round(c.apparent_temperature), rain,
+    mm: Math.round(c.precipitation * 10) / 10, wind: Math.round(c.wind_speed_10m), gust: Math.round(c.wind_gusts_10m),
+    humidity: Math.round(c.relative_humidity_2m),
+    snow: c.snowfall > 0 || (temp <= 0 && rain >= 25),
+    elevation: Math.round(d.elevation), time: c.time.slice(11, 16),
   };
-}
-function placeWeather(name) {
-  const n = norm(name); const h = hash(n);
-  const key = Object.keys(CITY).find((k) => n.includes(k));
-  const b = key ? CITY[key] : [(h % 20) - 6, 20 + ((h >> 3) % 50), 8 + ((h >> 5) % 30)];
-  const r = rand(h + Math.floor(Date.now() / 864e5)); // günlük değişir
-  return build(Math.round(b[0] + (r() - 0.5) * 4), clamp(Math.round(b[1] + (r() - 0.5) * 30), 0, 100), Math.max(0, Math.round(b[2] + (r() - 0.5) * 10)), r, !key || MOUNTAIN.includes(key));
-}
-
-export async function getRouteWeather(from, to) {
-  const f = (from || '').trim(), t = (to || '').trim();
-  if (!f && !t) return null;
-  const a = placeWeather(f || t), b = placeWeather(t || f);
-  const points = [{ label: 'Başlangıç', place: f || t, ...a }];
-  if (f && t && norm(f) !== norm(t)) {
-    const r = rand(hash(norm(f + t)));
-    const m = build(Math.round((a.temp + b.temp) / 2 + (r() - 0.5) * 3), Math.round((a.rain + b.rain) / 2), Math.round((a.wind + b.wind) / 2), r, false);
-    points.push({ label: 'Rota ortası', place: `${f} – ${t}`, ...m, conf: Math.min(a.conf, b.conf, m.conf) - 6, estimated: true });
-    points.push({ label: 'Varış', place: t, ...b });
-  }
-  const worst = { temp: Math.min(...points.map((p) => p.temp)), rain: Math.max(...points.map((p) => p.rain)),
-    wind: Math.max(...points.map((p) => p.wind)), snow: points.some((p) => p.snow) };
-  return { points, worst };
+  const minT = Math.round(day.temperature_2m_min[0]);
+  const maxRain = day.precipitation_probability_max[0] ?? rain;
+  const worst = {
+    temp: minT, rain: maxRain,
+    wind: Math.round(day.wind_speed_10m_max[0] ?? point.wind), gust: Math.round(day.wind_gusts_10m_max[0] ?? point.gust),
+    snow: day.snowfall_sum[0] > 0 || (minT <= 0 && maxRain >= 25),
+  };
+  return { points: [point], worst };
 }
 
 export const wIcon = (p) => (p.snow ? '❄️' : p.rain >= 50 ? '🌧️' : p.wind >= 30 ? '💨' : p.temp >= 28 ? '🔥' : p.rain >= 25 ? '⛅' : '☀️');
