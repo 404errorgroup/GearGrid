@@ -1,66 +1,97 @@
-// Hava servisi: Open-Meteo (canlı, API anahtarı gerekmez). Birimler: °C, km/s, mm.
-// getPlaceWeather(yer) -> { points: [şu anki durum], worst: bugünün en zor koşulu }
-// "worst" ekipman kural motoruna (engine.js) gider: günün en düşük sıcaklığı, en yüksek yağış ihtimali ve rüzgarı.
-// Koordinatlar yaklaşıktır. Open-Meteo sıcaklığı noktanın rakımına göre hesaplar; Hava sekmesinde rakım yazar,
-// beklediğinden farklıysa koordinatı düzelt (özellikle Uludağ, Erciyes, Kaçkar).
-const PLACES = {
-  'Babadağ': [36.517, 29.167], 'Ölüdeniz': [36.55, 29.117], 'Fethiye': [36.622, 29.116], 'Kaş': [36.202, 29.641],
-  'Geyikbayırı': [36.878, 30.486], 'Antalya': [36.897, 30.713], 'Bodrum': [37.034, 27.431], 'Çeşme': [38.324, 26.307],
-  'Alaçatı': [38.282, 26.374], 'İzmir': [38.424, 27.143], 'İstanbul': [41.008, 28.978], 'Bursa': [40.183, 29.067],
-  'Uludağ': [40.09, 29.13], 'Bolu': [40.735, 31.606], 'Ankara': [39.933, 32.86], 'Kayseri': [38.731, 35.479],
-  'Erciyes': [38.54, 35.48], 'Trabzon': [41.003, 39.717], 'Kaçkar': [40.84, 41.16],
+import { norm } from './health';
+
+// CANLI HAVA SERVİSİ: Open-Meteo (ücretsiz, API anahtarı yok, kayıt yok). Docs: https://open-meteo.com/en/docs
+// Akış: yazılan TEK konum -> koordinat (Geocoding API) -> o konumun BUGÜN SAAT 12:00 tahmini (Forecast API, saatlik veri).
+// İnternet yoksa uygulama çökmesin diye eski simüle veriye düşer ve sonuçta offline: true döner.
+// Çıktı: { place, time, temp, feels, rain, mm, wind, gust, humidity, snow, code, conf, source, updated, offline? } (hepsi bugün 12:00 değerleri)
+// conf (tahmin doğruluğu) canlı veride yoktur (null): Open-Meteo bir güven yüzdesi vermez, uydurmuyoruz.
+
+const GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+const TIMEOUT_MS = 12000;
+const SNOW_CODES = [71, 73, 75, 77, 85, 86];
+
+export const CITIES = ['Babadağ', 'Ölüdeniz', 'Fethiye', 'Kaş', 'Geyikbayırı', 'Antalya', 'Bodrum', 'Çeşme', 'Alaçatı', 'İzmir', 'İstanbul', 'Bursa', 'Uludağ', 'Bolu', 'Ankara', 'Kayseri', 'Erciyes', 'Trabzon', 'Kaçkar'];
+
+// Geocoding'in köy/ilçe ile karıştırabileceği DAĞ noktaları: koordinat + rakım elle verilir (rakım sıcaklığı doğru yapar).
+// Yeni nokta için bir satır ekle: anahtar = norm() ile yazılmış ad (küçük harf, Türkçe karaktersiz).
+const KNOWN = {
+  babadag: { name: 'Babadağ', label: 'Babadağ (Fethiye)', lat: 36.51, lon: 29.16, elev: 1700 },
+  uludag: { name: 'Uludağ', label: 'Uludağ (Bursa)', lat: 40.085, lon: 29.22, elev: 1850 },
+  erciyes: { name: 'Erciyes', label: 'Erciyes (Kayseri)', lat: 38.53, lon: 35.45, elev: 2100 },
 };
-export const CITIES = Object.keys(PLACES);
 
-const BASE = 'https://api.open-meteo.com/v1/forecast';
-const TIMEOUT_MS = 10000;
+const fold = (t) => t.replace(/ğ/g, 'g').replace(/Ğ/g, 'G').replace(/ü/g, 'u').replace(/Ü/g, 'U').replace(/ş/g, 's').replace(/Ş/g, 'S')
+  .replace(/ı/g, 'i').replace(/İ/g, 'I').replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C');
 
-export async function getPlaceWeather(place) {
-  const pos = PLACES[place];
-  if (!pos) throw new Error('Bilinmeyen konum: ' + place);
-  const url = `${BASE}?latitude=${pos[0]}&longitude=${pos[1]}`
-    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,snowfall,wind_speed_10m,wind_gusts_10m'
-    + '&hourly=precipitation_probability'
-    + '&daily=temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,snowfall_sum'
-    + '&forecast_days=1&timezone=auto';
+class NotFound extends Error {}
 
+async function getJson(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  let d;
   try {
     const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error('Open-Meteo ' + res.status);
-    d = await res.json();
+    if (!res.ok) throw new Error('Hava servisi yanıt vermiyor');
+    return await res.json();
   } finally { clearTimeout(timer); }
-  if (d.error) throw new Error(d.reason || 'Open-Meteo hatası');
-
-  const c = d.current, day = d.daily;
-  // Yağış ihtimali saatlik gelir: şu anki saate denk gelen değeri al
-  const idx = Math.max(0, d.hourly.time.indexOf(c.time.slice(0, 13) + ':00'));
-  const rain = d.hourly.precipitation_probability[idx] ?? 0;
-  const temp = Math.round(c.temperature_2m);
-  const point = {
-    label: 'Şu an', place, temp, feels: Math.round(c.apparent_temperature), rain,
-    mm: Math.round(c.precipitation * 10) / 10, wind: Math.round(c.wind_speed_10m), gust: Math.round(c.wind_gusts_10m),
-    humidity: Math.round(c.relative_humidity_2m),
-    snow: c.snowfall > 0 || (temp <= 0 && rain >= 25),
-    elevation: Math.round(d.elevation), time: c.time.slice(11, 16),
-  };
-  const minT = Math.round(day.temperature_2m_min[0]);
-  const maxRain = day.precipitation_probability_max[0] ?? rain;
-  const worst = {
-    temp: minT, rain: maxRain,
-    wind: Math.round(day.wind_speed_10m_max[0] ?? point.wind), gust: Math.round(day.wind_gusts_10m_max[0] ?? point.gust),
-    snow: day.snowfall_sum[0] > 0 || (minT <= 0 && maxRain >= 25),
-  };
-  return { points: [point], worst };
 }
 
-export const wIcon = (p) => (p.snow ? '❄️' : p.rain >= 50 ? '🌧️' : p.wind >= 30 ? '💨' : p.temp >= 28 ? '🔥' : p.rain >= 25 ? '⛅' : '☀️');
+async function findPlace(name) {
+  const key = Object.keys(KNOWN).find((k) => norm(name).includes(k));
+  if (key) return KNOWN[key];
+  const search = async (q, tr) => {
+    const data = await getJson(`${GEO_URL}?name=${encodeURIComponent(q)}&count=1&language=tr&format=json${tr ? '&countryCode=TR' : ''}`);
+    const r = data.results && data.results[0];
+    return r && { name: r.name, label: [r.name, r.admin1].filter((x, i, a) => x && a.indexOf(x) === i).join(', '), lat: r.latitude, lon: r.longitude, elev: typeof r.elevation === 'number' ? r.elevation : null };
+  };
+  const found = (await search(name, true)) || (await search(name, false)) || (fold(name) !== name ? await search(fold(name), false) : null);
+  if (!found) throw new NotFound(`"${name}" bulunamadı. Yer adını kontrol et.`);
+  return found;
+}
+
+// Tek nokta için BUGÜN SAAT 12:00 (öğlen, o yerin yerel saatiyle) verisi. Rüzgar km/s, sıcaklık °C, yağış mm.
+const NOON = 12;
+async function fetchPoint(p) {
+  const elev = p.elev != null ? `&elevation=${p.elev}` : '';
+  const url = `${FORECAST_URL}?latitude=${p.lat}&longitude=${p.lon}${elev}`
+    + '&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m'
+    + '&forecast_days=1&timezone=auto';
+  const data = await getJson(url);
+  const h = data.hourly; if (!h || !h.time || !h.time.length) throw new Error('Tahmin verisi alınamadı');
+  let i = h.time.findIndex((x) => String(x).endsWith(`T${String(NOON).padStart(2, '0')}:00`));
+  if (i < 0) i = Math.min(NOON, h.time.length - 1);
+  const v = (a, def = 0) => (a && a[i] != null ? a[i] : def);
+  const precip = v(h.precipitation), code = v(h.weather_code);
+  let rain = v(h.precipitation_probability, null);
+  if (rain == null) rain = precip >= 1 ? 60 : precip > 0 ? 30 : 0; // olasılık yoksa saatlik yağıştan tahmin et
+  return {
+    time: h.time[i], // örn. 2026-11-24T12:00
+    temp: Math.round(v(h.temperature_2m)), feels: Math.round(v(h.apparent_temperature, v(h.temperature_2m))),
+    rain: Math.round(rain), mm: Math.round(precip * 10) / 10, // mm/sa: o saatteki yağış
+    wind: Math.round(v(h.wind_speed_10m)), gust: Math.round(v(h.wind_gusts_10m)), humidity: Math.round(v(h.relative_humidity_2m, 50)),
+    snow: v(h.snowfall) > 0 || SNOW_CODES.includes(code), code, conf: null, source: 'live',
+  };
+}
+
+export async function getWeather(place) {
+  const name = (place || '').trim();
+  if (!name) return null;
+  try {
+    const found = await findPlace(name);
+    const w = await fetchPoint(found);
+    const d = new Date();
+    return { place: found.label || found.name, ...w, fetchedAt: Date.now(), updated: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` };
+  } catch (e) {
+    if (e instanceof NotFound) throw e;                          // yazım hatası: kullanıcıya göster
+    return { place: name, ...simPoint(name), offline: true };    // internet yok / servis kapalı: simüle veriye düş
+  }
+}
+
+export const wIcon = (p) => (p.snow ? '❄️' : p.code >= 95 ? '⛈️' : p.rain >= 50 ? '🌧️' : p.wind >= 30 ? '💨' : p.temp >= 28 ? '🔥' : p.rain >= 25 ? '⛅' : '☀️');
 
 // Spora göre uygunluk yorumu: ok / warn / bad
 export function verdict(sportId, p) {
-  const bad = (t) => ({ level: 'bad', text: t }), warn = (t) => ({ level: 'warn', text: t }), ok = { level: 'ok', text: 'Koşullar uygun' };
+  const bad = (x) => ({ level: 'bad', text: x }), warn = (x) => ({ level: 'warn', text: x }), ok = { level: 'ok', text: 'Koşullar uygun' };
   if (sportId === 'paragliding') {
     if (p.wind >= 25 || p.gust >= 35 || p.rain >= 30 || p.snow) return bad('Uçuş önerilmez: rüzgar, yağış veya kar');
     return p.wind >= 18 ? warn('Rüzgar sınıra yakın') : ok;
@@ -75,4 +106,23 @@ export function verdict(sportId, p) {
   }
   if (p.wind >= 45 || (p.snow && p.temp <= -8)) return bad('Kamp için tehlikeli koşullar');
   return p.rain >= 50 || p.temp <= 3 || p.wind >= 30 ? warn('Soğuk, yağış veya rüzgar: ekipmanı artır') : ok;
+}
+
+// ---------------------------------------------------------------------------------------------
+// ÇEVRİMDIŞI YEDEK (SİMÜLE): sadece internet yokken kullanılır; gerçek veri değildir, uygulama bunu uyarıyla gösterir.
+// ---------------------------------------------------------------------------------------------
+const CITY = { alacati: [14, 40, 30], cesme: [13, 40, 28], bodrum: [13, 40, 20], kas: [14, 40, 14], babadag: [4, 45, 26], geyikbayiri: [12, 40, 12],
+  istanbul: [9, 55, 28], bursa: [7, 50, 15], uludag: [-4, 60, 40], izmir: [11, 35, 18], ankara: [1, 30, 14], antalya: [12, 40, 12],
+  kayseri: [-1, 25, 16], erciyes: [-9, 35, 38], trabzon: [9, 70, 16], kackar: [-6, 55, 30], mugla: [8, 45, 12], fethiye: [13, 45, 14],
+  oludeniz: [13, 40, 15], bolu: [3, 45, 12] };
+const hash = (s) => { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
+const rand = (seed) => { let a = seed; return () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function simPoint(name) {
+  const n = norm(name); const h = hash(n); const key = Object.keys(CITY).find((k) => n.includes(k));
+  const b = key ? CITY[key] : [(h % 20) - 6, 20 + ((h >> 3) % 50), 8 + ((h >> 5) % 30)];
+  const r = rand(h + Math.floor(Date.now() / 864e5));
+  const temp = Math.round(b[0] + (r() - 0.5) * 4), rain = clamp(Math.round(b[1] + (r() - 0.5) * 30), 0, 100), wind = Math.max(0, Math.round(b[2] + (r() - 0.5) * 10));
+  return { temp, feels: temp - (wind >= 20 ? 3 : 1), rain, mm: rain >= 30 ? Math.max(1, Math.round(rain / 12)) : 0, wind, gust: Math.round(wind * 1.35),
+    humidity: clamp(Math.round(40 + rain * 0.5), 20, 100), snow: temp <= 0 && rain >= 25, code: 0, conf: 55, source: 'sim' };
 }
