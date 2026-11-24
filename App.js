@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, Modal, SafeAreaView,
-  StatusBar, Dimensions, Platform, TextInput, Animated, LogBox,
+  StatusBar, Dimensions, Platform, TextInput, Animated, LogBox, AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  Sun, Compass, Briefcase, Pill, Navigation, Check, ShoppingBag, User, Settings, X,
+  Sun, Compass, Briefcase, Pill, MapPin, Check, ShoppingBag, User, Settings, X,
   ArrowLeft, Sparkles, AlertTriangle, Home, Plus,
 } from 'lucide-react-native';
 import { SPORTS } from './src/data';
 import { PHOTOS } from './src/photos';
 import { LOCAL_PHOTOS } from './src/sportPhotos';
 import { buildList, status, weightAdvice } from './src/engine';
-import { getPlaceWeather, wIcon, verdict, CITIES } from './src/weather';
+import { getWeather, wIcon, verdict, CITIES } from './src/weather';
 import { matchConditions, healthFor, SUGGEST, INTERACTIONS } from './src/health';
 import Scene from './src/scene';
 
@@ -23,7 +23,7 @@ const DIMS = { home: 0.4, equipment: 0.35, weather: 0.2 }; // sayfaya göre kara
 const BLOODS = ['A Rh+', 'A Rh-', 'B Rh+', 'B Rh-', 'AB Rh+', 'AB Rh-', '0 Rh+', '0 Rh-'];
 const LVL = { d: ['#ef4444', 'Tehlikeli'], w: ['#f59e0b', 'Dikkat'], i: ['#38bdf8', 'Bilgi'], n: ['#10b981', 'Tanındı'], u: ['#64748b', 'Tanınmadı'] };
 const VC = { ok: '#10b981', warn: '#f59e0b', bad: '#ef4444' };
-const METRIC = { feels: ['🥶', 'Hissedilen', (p) => `${p.feels}°C`], temp: ['🌡️', 'Sıcaklık', (p) => `${p.temp}°C`], rain: ['🌧️', 'Yağış', (p) => `%${p.rain}`], wind: ['💨', 'Rüzgar', (p) => `${p.wind} km/s`],
+const METRIC = { feels: ['🥶', 'Hissedilen', (p) => `${p.feels}°C`], temp: ['🌡️', 'Sıcaklık', (p) => `${p.temp}°C`], rain: ['🌧️', 'Yağış ihtimali', (p) => `%${p.rain}`], wind: ['💨', 'Rüzgar', (p) => `${p.wind} km/s`],
   gust: ['🌬️', 'Hamle', (p) => `${p.gust} km/s`], humidity: ['💧', 'Nem', (p) => `%${p.humidity}`] };
 const FOCUS = { camping: ['feels', 'rain'], 'ultra-trail': ['feels', 'humidity'], paragliding: ['wind', 'gust'], 'rock-climbing': ['rain', 'feels'] };
 const DEFAULT_WEATHER = { temp: 15, rain: 0, wind: 0, snow: false };
@@ -90,10 +90,10 @@ export default function App() {
   const [tab, setTab] = useState('home'); // 'home' | 'equipment' | 'weather'
   const [sportId, setSportId] = useState(null);
   const [bg, setBg] = useState(() => randomBg(null));
-  const [place, setPlace] = useState('Babadağ');
-  const [route, setRoute] = useState(null);
-  const [wxLoading, setWxLoading] = useState(true);
-  const [wxError, setWxError] = useState(null);
+  const [place, setPlace] = useState('Babadağ'); // hava durumu için TEK konum
+  const [placeDraft, setPlaceDraft] = useState('Babadağ'); // kutuda yazılan, Ara'ya basınca place olur
+  const [weather, setWeather] = useState(null);
+  const [wTick, setWTick] = useState(0); // aynı konumu yeniden çekmek için
   const [packed, setPacked] = useState({});
   const [profile, setProfile] = useState({ name: 'Kaan Yılmaz', blood: 'A Rh+', conds: [], done: false });
   const [newCond, setNewCond] = useState('');
@@ -105,26 +105,40 @@ export default function App() {
   useEffect(() => {
     AsyncStorage.getItem(KEY).then((raw) => {
       if (!raw) return; const d = JSON.parse(raw);
-      setSportId(d.sportId ?? null); if (d.sportId) setBg(randomBg(d.sportId)); setPlace(d.place || d.from || 'Babadağ'); setPacked(d.packed || {}); if (d.profile) setProfile(d.profile);
+      setSportId(d.sportId ?? null); if (d.sportId) setBg(randomBg(d.sportId)); { const pl = d.place || d.to || 'Babadağ'; setPlace(pl); setPlaceDraft(pl); } setPacked(d.packed || {}); if (d.profile) setProfile(d.profile);
     }).catch(() => {}).finally(() => setLoaded(true));
     return () => clearTimeout(timer.current);
   }, []);
   useEffect(() => { if (loaded) AsyncStorage.setItem(KEY, JSON.stringify({ sportId, place, packed, profile })).catch(() => {}); }, [loaded, sportId, place, packed, profile]);
+  const [wLoading, setWLoading] = useState(false);
+  const [wError, setWError] = useState('');
+  const wRef = useRef(null); wRef.current = weather;
+  // Canlı hava (Open-Meteo, src/weather.js). Konum değişince yeniden çeker; eski istek yenisini ezmesin diye iptal bayrağı var.
   useEffect(() => {
-    let off = false;
-    setWxLoading(true); setWxError(null);
-    getPlaceWeather(place)
-      .then((r) => { if (!off) { setRoute(r); setWxLoading(false); } })
-      .catch(() => { if (!off) { setRoute(null); setWxError('Hava verisi alınamadı. İnternet bağlantını kontrol et.'); setWxLoading(false); } });
-    return () => { off = true; };
-  }, [place]);
+    let live = true; setWLoading(true); setWError('');
+    getWeather(place).then((w) => { if (live && w) setWeather(w); })
+      .catch((e) => { if (live) setWError((e.message || 'Hava durumu alınamadı.') + (wRef.current ? ` Şimdilik ${wRef.current.place} havası gösteriliyor.` : '')); })
+      .finally(() => { if (live) setWLoading(false); });
+    return () => { live = false; };
+  }, [place, wTick]);
+  useEffect(() => { // Hava sekmesi açılınca veri 10 dk'dan eskiyse yenile
+    if (tab === 'weather' && wRef.current && wRef.current.fetchedAt && Date.now() - wRef.current.fetchedAt > 10 * 60 * 1000) setWTick((n) => n + 1);
+  }, [tab]);
+  useEffect(() => { // Uygulama arka plandan dönünce de aynı kontrol
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active' && wRef.current && wRef.current.fetchedAt && Date.now() - wRef.current.fetchedAt > 10 * 60 * 1000) setWTick((n) => n + 1);
+    });
+    return () => sub.remove();
+  }, []);
+  const submitPlace = () => { const v = placeDraft.trim(); if (!v) return; if (v === place) setWTick((n) => n + 1); else setPlace(v); };
+  const pickPlace = (c) => { setPlaceDraft(c); if (c === place) setWTick((n) => n + 1); else setPlace(c); };
 
   const sport = SPORTS.find((x) => x.id === sportId);
   const limit = sport ? sport.limit : 0;
-  const worst = route ? route.worst : DEFAULT_WEATHER;
+  const worst = weather || DEFAULT_WEATHER;
   const healthDone = profile.done || profile.conds.length > 0;
   const health = useMemo(() => (sport ? healthFor(sportId, profile.conds) : { notes: [], items: [] }), [sportId, profile.conds]);
-  const { mandatory, meds, warnings } = useMemo(() => (sport ? buildList(sportId, worst, health.items) : { mandatory: [], meds: [], warnings: [] }), [sportId, route, health]);
+  const { mandatory, meds, warnings } = useMemo(() => (sport ? buildList(sportId, worst, health.items) : { mandatory: [], meds: [], warnings: [] }), [sportId, weather, health]);
   const st = useMemo(() => status([...mandatory, ...meds], packed, limit), [mandatory, meds, packed, limit]);
   const matches = useMemo(() => matchConditions(profile.conds, sport ? sportId : null), [profile.conds, sportId]);
   const autoAlerts = [...mandatory.filter((i) => i.auto).map((i) => `${i.why}: ${i.name} listeye eklendi.`), ...warnings];
@@ -195,11 +209,9 @@ export default function App() {
         {tab === 'home' && (
           <View>
             <View style={s.weatherSummaryCard}>
-              <Text style={s.weatherSummaryTitle}>{place}</Text>
-              {route
-                ? <Text style={s.weatherDetailText}>{wIcon(worst)} En düşük {worst.temp}°C · 🌧️ %{worst.rain} · 💨 {worst.wind} km/s</Text>
-                : <Text style={s.weatherDetailText}>{wxError || 'Hava verisi yükleniyor…'}</Text>}
-              <Text style={s.gearItemSpec}>Bugünün en zor koşulu (Open-Meteo). Konumu Hava sekmesinden değiştirebilirsin.</Text>
+              <Text style={s.weatherSummaryTitle}>{weather ? weather.place : place}</Text>
+              <Text style={s.weatherDetailText}>{wIcon(worst)} Öğlen 12:00 · {worst.temp}°C · 🌧️ %{worst.rain} · 💨 {worst.wind} km/s</Text>
+              <Text style={s.gearItemSpec}>Seçili konumun bugün öğlen 12:00 hava durumu. Konumu Hava sekmesinden değiştirebilirsin.</Text>
             </View>
             <View style={[s.sectionHeader, { marginTop: 14 }]}>
               <Compass size={14} color="#d97706" />
@@ -225,7 +237,7 @@ export default function App() {
             <View style={s.infoCard}>
               <Sparkles size={24} color="#f59e0b" />
               <Text style={s.infoTitle}>Bir spora dokun, ekipman sayfası açılsın</Text>
-              <Text style={s.infoDesc}>Seçimden yaklaşık 1 saniye sonra rotadaki hava koşullarına göre hazırlanan zorunlu ekipman listesi açılır.</Text>
+              <Text style={s.infoDesc}>Seçimden yaklaşık 1 saniye sonra seçili konumun hava koşullarına göre hazırlanan zorunlu ekipman listesi açılır.</Text>
             </View>
           </View>
         )}
@@ -308,23 +320,42 @@ export default function App() {
           </View>
         ))}
 
-        {/* HAVA & ROTA */}
+        {/* HAVA */}
         {tab === 'weather' && (
           <View style={s.gearContainer}>
             <View style={s.cardBox}>
-              <View style={s.cardHeader}><Navigation size={16} color="#0284c7" /><Text style={s.cardTitle}>Hava Durumu (Open-Meteo)</Text></View>
+              <View style={s.cardHeader}><MapPin size={16} color="#0284c7" /><Text style={s.cardTitle}>Konum Hava Durumu</Text></View>
               <Text style={s.smallTitle}>Konum</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput style={[s.condInput, { flex: 1 }]} value={placeDraft} onChangeText={setPlaceDraft} onSubmitEditing={submitPlace}
+                  returnKeyType="search" placeholder="Örn. Uludağ, Fethiye, Kaş" placeholderTextColor="#64748b" />
+                <TouchableOpacity style={s.searchBtn} onPress={submitPlace}><Text style={s.searchBtnText}>Ara</Text></TouchableOpacity>
+              </View>
+              <Text style={s.smallTitle}>Hızlı seçim</Text>
               <View style={s.cityGrid}>{CITIES.map((c) => (
-                <TouchableOpacity key={c} style={[s.cityBtn, place === c && s.cityBtnOn]} onPress={() => setPlace(c)}><Text style={[s.cityText, place === c && s.cityTextOn]}>{c}</Text></TouchableOpacity>))}</View>
+                <TouchableOpacity key={c} style={[s.cityBtn, place === c && s.cityBtnOn]} onPress={() => pickPlace(c)}><Text style={[s.cityText, place === c && s.cityTextOn]}>{c}</Text></TouchableOpacity>))}</View>
               <Text style={s.gearItemSpec}>{sport ? `${sport.icon} ${sport.name} için gösteriliyor.` : 'Ana sayfadan spor seçersen değerler o spora göre öne çıkar.'}</Text>
             </View>
-            {wxLoading && <Text style={s.gearItemSpec}>Hava verisi yükleniyor…</Text>}
-            {!wxLoading && wxError && <View style={s.alertCard}><Text style={[s.alertDesc, { color: '#fca5a5' }]}>{wxError}</Text></View>}
-            {!wxLoading && route && route.points.map((p) => {
+            {wLoading && <Text style={s.gearItemSpec}>⏳ Hava durumu getiriliyor...</Text>}
+            {!!wError && <View style={s.alertCard}><Text style={[s.alertDesc, { color: '#f59e0b' }]}>⚠️ {wError}</Text></View>}
+            {weather && weather.offline && <View style={s.alertCard}><Text style={[s.alertDesc, { color: '#f59e0b' }]}>⚠️ İnternet yok: aşağıdaki değerler SİMÜLEDİR, gerçek hava durumu değildir. Bağlanınca Ara'ya basarak yenile.</Text></View>}
+            {weather && weather.source === 'live' && <Text style={s.gearItemSpec}>Veri: Open-Meteo · bugün 12:00 tahmini · güncelleme {weather.updated}</Text>}
+            {weather && [weather].map((p) => {
               const v = verdict(sportId, p);
+              const cc = p.conf >= 80 ? '#10b981' : p.conf >= 65 ? '#f59e0b' : '#ef4444';
               return (
-                <View key={p.label} style={s.weatherSummaryCard}>
-                  <Text style={s.weatherSummaryTitle}>{wIcon(p)} {p.place} · şu an</Text>
+                <View key={p.place} style={s.weatherSummaryCard}>
+                  <View style={s.pointHeader}>
+                    <Text style={[s.weatherSummaryTitle, { flex: 1 }]}>{wIcon(p)} {p.place}</Text>
+                    {p.conf != null && <Text style={[s.confBadge, { color: cc, borderColor: cc }]}>Doğruluk %{p.conf}</Text>}
+                  </View>
+                  {p.time && (
+                    <View style={s.nowBox}>
+                      <Text style={s.gearItemSpec}>ÖĞLE 12:00 · {String(p.time).slice(0, 10)} (yerel saat)</Text>
+                      <Text style={s.nowTemp}>{p.temp}°C <Text style={s.nowSub}>hissedilen {p.feels}°</Text></Text>
+                      <Text style={s.weatherDetailText}>💨 {p.wind} km/s (hamle {p.gust}) · 💧 %{p.humidity}{p.mm > 0 ? ` · 🌧️ ${p.mm} mm` : ''}</Text>
+                    </View>
+                  )}
                   <View style={[s.verdict, { backgroundColor: VC[v.level] + '33', borderColor: VC[v.level] }]}><Text style={s.verdictText}>{v.text}</Text></View>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     {focus.map((m) => (
@@ -336,12 +367,13 @@ export default function App() {
                   <Text style={[s.weatherDetailText, p.rain >= 40 && { color: '#f59e0b', fontWeight: '700' }]}>
                     {p.rain >= 20 ? `🌧️ Yağış ihtimali %${p.rain} · yaklaşık ${p.mm} mm/sa${p.snow ? ' (kar)' : ''}` : `🌤️ Yağış beklenmiyor (%${p.rain})`}
                   </Text>
-                  <Text style={s.gearItemSpec}>Veri: Open-Meteo · Rakım {p.elevation} m · {p.time}</Text>
+                  {p.conf != null && <View style={s.confTrack}><View style={[s.confFill, { width: `${p.conf}%`, backgroundColor: cc }]} /></View>}
+                  {p.conf != null && <Text style={s.gearItemSpec}>Tahmin doğruluğu {p.conf >= 80 ? 'yüksek' : p.conf >= 65 ? 'orta' : 'düşük'}</Text>}
                 </View>
               );
             })}
             {sport && autoAlerts.length > 0 && (
-              <View style={s.alertCard}><Text style={[s.alertDesc, { color: '#f59e0b' }]}>⚠️ Sistem bugünün en zor koşuluna göre {mandatory.filter((i) => i.auto).length} ekipmanı otomatik ekledi.</Text></View>
+              <View style={s.alertCard}><Text style={[s.alertDesc, { color: '#f59e0b' }]}>⚠️ Sistem bu konumun hava koşuluna göre {mandatory.filter((i) => i.auto).length} ekipmanı otomatik ekledi.</Text></View>
             )}
           </View>
         )}
@@ -502,6 +534,11 @@ const s = StyleSheet.create({
   cityBtnOn: { backgroundColor: '#38bdf8' },
   cityText: { color: '#94a3b8', fontSize: 10, fontWeight: '700' },
   cityTextOn: { color: '#020617' },
+  nowBox: { backgroundColor: 'rgba(56, 189, 248, 0.12)', borderRadius: 10, padding: 10, gap: 3 },
+  nowTemp: { color: '#f8fafc', fontSize: 28, fontWeight: '900' },
+  nowSub: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
+  searchBtn: { backgroundColor: '#38bdf8', paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center' },
+  searchBtnText: { color: '#020617', fontSize: 12, fontWeight: '800' },
   weatherSummaryCard: { backgroundColor: 'rgba(30, 41, 59, 0.75)', padding: 12, borderRadius: 12, gap: 6 },
   weatherSummaryTitle: { color: '#f8fafc', fontSize: 11, fontWeight: '700', marginBottom: 2 },
   weatherDetailText: { color: '#38bdf8', fontSize: 10 },
